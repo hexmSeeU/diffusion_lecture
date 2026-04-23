@@ -1,0 +1,233 @@
+\section{Flow 与 Diffusion Models}
+
+\subsection{Flow Models}
+
+我们首先定义\emph{轨迹}：一个随时间变化的位置函数：
+\begin{equation}
+X : [0,1] \to \R^d, \qquad t \mapsto X_t.
+\end{equation}
+\noindent
+它表示一个点如何随着时间在状态空间中连续移动。
+
+接着，我们引入一个随时间和位置变化的向量场
+\begin{equation}
+u : \R^d \times [0,1] \to \R^d, \qquad (x,t)\mapsto u_t(x).
+\end{equation}
+\noindent
+它的含义是：在任意时刻 $t$、任意位置 $x$，向量 $u_t(x)$ 指出当前点应该朝哪个方向、以多快的速度运动。
+
+有了轨迹和向量场之后，ODE 的定义就很自然了：我们要求轨迹在每个时刻的导数都由向量场给出。给定初值 $x_0 \in \R^d$，ODE写成
+\begin{equation}
+\begin{aligned}
+\frac{\dd X_t}{\dd t} &= u_t(X_t)
+& \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{ODE}} \\
+X_0 &= x_0
+& \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{初值条件}}
+\end{aligned}
+\label{eq:ODE}
+\end{equation}
+\noindent
+这意味着轨迹 $t\mapsto X_t$ 必须始终沿着向量场指定的方向前进。
+
+进一步，我们可以把“从初值走到时刻 $t$ 的位置”看成一个映射，并要求它满足与上面同样的 ODE 条件
+\begin{equation}
+\begin{aligned}
+\psi:\R^d \times [0,1] \to &\R^d, \qquad (x_0,t)\mapsto \psi_t(x_0) \\
+\frac{\dd}{\dd t}\psi_t(x_0) &= u_t(\psi_t(x_0))
+& \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{flow ODE}} \\
+\psi_0(x_0) &= x_0
+& \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{flow 初值条件}}
+\end{aligned}
+\end{equation}
+\noindent
+该映射 $\psi$ 就叫作flow，视为ODE的解。换句话说，flow 描述的是：如果从任意初始点 $x_0$ 出发，沿着该向量场运动到时刻 $t$，最终会到达哪里。直观上看，flow 会把整个空间连续地“推”到新的位置上。
+
+对于给定的初始条件 $X_0$，一个ODE的轨迹可以由flow得出：$X_t=\psi_t(X_0)$。在上述定义中，向量场，ODE和flow描述的是同一件事：向量场定义了ODE，该ODE的解为flow。
+
+从数学上看，一个自然问题是：给定向量场后，这样的 flow 是否一定存在，而且是否唯一？在常见的光滑性条件下，答案是肯定的。
+
+\begin{theorem}[Flow 的存在性及唯一性]                                                
+若向量场 $u : \R^d \times [0,1] \to \R^d$ 连续可微，且其导
+数有界，则~\ref{eq:ODE} 中的 ODE 存在唯一解，并且该解可由一个 flow $\psi_t$ 给出。进一步地，对任意 $t$，$\psi_t$ 都是一个微分同胚，也就是说，$\psi_t$ 连续可微，且其逆映射 $\psi_t^{-1}$ 也连续可微。                                          
+\end{theorem}                                             
+                                                        
+在机器学习里，我们通常用神经网络参数化 $u_t(x)$，在常见设定下这些向量场都足够规整，所以 flow 通常存在且唯一。
+
+\begin{example}[线性向量场]
+考虑最简单的线性向量场：$u_t(x)=-\theta x, \theta >0$。此时 ODE 为
+\begin{equation}
+\begin{aligned}
+\frac{\dd X_t}{\dd t} &= -\theta X_t
+& \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{ODE}} \\
+X_0 &= x_0
+& \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{初值条件}}
+\end{aligned}
+\end{equation}
+\noindent
+它的解可以显式写成
+\begin{equation}
+X_t=\psi_t(x_0)=e^{-\theta t}x_0.
+\end{equation}
+\end{example}
+
+
+现实中的向量场通常由神经网络参数化，几乎不可能像上面的线性例子那样写出显式解。因此在实践里，我们一般不直接求出 $\psi_t$，而是数值求解 ODE。
+
+最基本的方法是 Euler 方法。把时间区间 $[0,1]$ 划分成 $N$ 份，并记步长为 $h=\frac{1}{N}$，则迭代格式为
+\begin{equation}
+X_{t+h} = X_{t} + h \, u_{t}(X_t).
+\end{equation}
+\noindent
+它的含义很直接：在每一个小时间步里，先读取当前位置的速度，再向前迈出一小步。
+
+假设现在又一个神经网络参数化的向量场 $u_t^\theta$，我们的目标是从数据分布 $p_{data}$ 中生成（采样）得到 $\vz$。这些样本需要是随机的，但由于ODE本身在确定初始状态和向量场后是完全确定的，因此我们需要确保初始状态随机。我们选择一个初始分布 $p_{init}=\mathcal{N}(0,I_d)$。我们因此可以通过ODE来描述一个flow model
+\begin{equation}
+  \begin{aligned}
+    X_0 &\sim p_{init}
+  & \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{随机初始化}} \\
+  \frac{\dd X_t}{\dd t}&=u_t^\theta(X_t)
+  & \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{ODE}}
+  \end{aligned}
+\end{equation}
+
+我们的目标是让轨迹终点 $X_1$ 服从数据分布 $p_{data}$，即 $X_1=\psi_1^\theta(X_0) \sim p_{data}$。为了计算flow，我们可以Euler法数值模拟ODE得到最终的数据分布
+
+\begin{algorithm}
+\caption{Sampling from a Flow Model with Euler method}
+\begin{algorithmic}[1]
+\Require Neural network vector field $u_t^\theta$, number of steps $n$
+\State Set $t = 0$
+\State Set step size $h = \frac{1}{n}$
+\State Draw a sample $X_0 \sim p_{\text{init}}$
+\For{$i = 1, \dots, n$}
+    \State $X_{t+h} = X_t + h\, u_t^\theta(X_t)$
+    \State Update $t \leftarrow t + h$
+\EndFor
+\State \Return $X_1$
+\end{algorithmic}
+\end{algorithm}
+
+
+
+\subsection{Diffusion Models}
+flow model 使用的是确定性动力学；而 diffusion model 会显式加入随机噪声。对应的连续时间对象是随机微分方程（SDE）：
+\begin{equation}
+\dd X_t = u_t(X_t)\,\dd t + \sigma_t\,\dd W_t.
+\end{equation}
+\noindent
+这里：
+\begin{itemize}
+  \item $\sigma_t$ 是扩散系数，控制噪声强度；
+  \item $W_t$ 是标准 Wiener 过程，也就是连续时间布朗运动。布朗运动 $W=(W_t)_{0 \leq t \leq 1}$ 是一个随机过程满足 $W_0=0$ 且轨迹连续。具有如下性质：
+  \begin{itemize}
+    \item 标准化增量：$W_t-W_s \sim \mathcal{N}(0,(t-s)I_d)$
+    \item 独立增量：$W_{t_1}-W_{t_0}, ..., W_{t_n}-W_{t_{n-1}}$ 均为独立随机变量
+    \item 布朗运动可以用如下方式模拟：
+    \begin{equation}
+      W_{t+h}=W_t+\sqrt{h}\, \epsilon_t, \qquad \varepsilon_t \sim \mathcal{N}(0,I_d)
+    \end{equation}
+  \end{itemize}
+\end{itemize}
+
+与 ODE 相比，SDE 的差别在于每一步运动不再完全由当前位置决定，还叠加了一点随机扰动。因此，同样的初值在不同采样路径下可能走出不同轨迹。
+
+\begin{theorem}[SDE解的存在性及确定性]
+若向量场 $u : \R^d \times [0,1] \to \R^d$ 连续可微，且其导数有界，同时扩散系数 $\sigma_t$ 关于时间连续，则上面的 SDE 存在解，并且该解由唯一的随机过程 $(X_t)_{0 \le t \le 1}$ 给出。
+\end{theorem}
+
+在常见的神经网络参数化设定下，这类 SDE 一般都能良好定义。还要注意，ODE 其实也可以看成 SDE 的一个特例，令扩散系数 $\sigma_t=0$ 即可。因此在后续讨论中，我们会把 ODE 视为 SDE 框架中的特殊情形。
+
+和ODE一样，我们的目标是将简单的初始分布 $p_{init}$ 映射到复杂的真实数据分布 $p_{data}$。我们同样通过神经网络参数化向量场 $u_t$。我们用SDE来描述一个diffusion model
+\begin{equation}
+  \begin{aligned}
+    X_0 &\sim p_{init}
+  & \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{随机初始化}} \\
+  \dd X_t&=u_t^\theta(X_t) \dd t + \sigma_t \dd W_t
+  & \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{SDE}}
+  \end{aligned}
+\end{equation}
+
+在数值模拟SDE时，我们采用Euler--Maruyama方法。在一个很短的时间步 $h$ 内，我们对SDE积分
+\begin{equation}
+  X_{t+h} - X_t
+  =
+  \int_t^{t+h} u_s(X_s)\,ds
+  +
+  \int_t^{t+h} \sigma_s\,dW_s.
+\end{equation}
+对于漂移项，
+\begin{equation}
+    \int_t^{t+h} u_s(X_s)\,ds
+    \approx
+    u_t(X_t)\,h,
+\end{equation}
+即认为在短时间内漂移项变化较小，可用区间左端点的值近似。对于随机项，由于布朗运动增量满足
+\begin{equation}
+    W_{t+h} - W_t
+    \sim
+    \Normal(0, h\,I_d),
+\end{equation}
+因此可写为
+\begin{equation}
+    W_{t+h} - W_t
+    =
+    \sqrt{h}\,\varepsilon,
+    \qquad
+    \varepsilon \sim \Normal(0, I_d).
+\end{equation}
+于是扩散项近似为
+\begin{equation}
+    \int_t^{t+h} \sigma_s\,dW_s
+    \approx
+    \sigma_t (W_{t+h} - W_t)
+    =
+    \sigma_t \sqrt{h}\,\varepsilon.
+\end{equation}
+综上可得 Euler--Maruyama 离散形式
+\begin{equation}
+X_{t+h} = X_t + u_t(X_t)\, h + \sigma_t\sqrt{h}\,\varepsilon,
+\qquad \varepsilon \sim \Normal(0,I_d).
+\end{equation}
+
+Euler--Maruyama 方法可以形式化为
+\begin{algorithm}
+  \caption{Sampling from a Diffusion Model with Euler--Maruyama method}
+  \begin{algorithmic}[1]
+  \Require Neural network vector field $u_t^\theta$, number of steps $n$, diffusion coefficient $\sigma_t$
+  \State Set $t = 0$
+  \State Set step size $h = \frac{1}{n}$
+  \State Draw a sample $X_0 \sim p_{\text{init}}$
+  \For{$i = 1, \dots, n$}
+      \State $X_{t+h} = X_t + h\, u_t^\theta(X_t) + \sigma_t \sqrt{h} \varepsilon$
+      \State Update $t \leftarrow t + h$
+  \EndFor
+  \State \Return $X_1$
+  \end{algorithmic}
+  \end{algorithm}
+
+
+\begin{summarybox}
+一个 diffusion model 包含一个神经网络参数化的向量场 $u_t^\theta$ 和一个固定的扩散系数 $\sigma_t$
+\begin{equation}
+\begin{aligned}
+u_{\theta} &: \mathbb{R}^{d} \times [0,1] \rightarrow \mathbb{R}^{d},
+\quad
+(x,t) \mapsto u_{\theta,t}(x) \\
+\sigma_t &: [0,1] \rightarrow [0,\infty),
+\quad
+t \mapsto \sigma_t
+\end{aligned}
+\end{equation}
+为了利用SDE模型得到真实数据分布并采样样本，我们建立如下流程：
+\begin{equation}
+  \begin{aligned}
+    X_0 &\sim p_{init}
+  & \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{使用简单分布初始化}} \\
+  \dd X_t&=u_t^\theta(X_t) \dd t + \sigma_t \dd W_t
+  & \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{模拟SDE}} \\
+  X_1 &\sim p_{data}
+  & \qquad\qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{目标：逼近数据分布}}
+  \end{aligned}
+\end{equation}
+当 $\sigma_t = 0$ 时，diffusion model变为flow model。
+\end{summarybox}

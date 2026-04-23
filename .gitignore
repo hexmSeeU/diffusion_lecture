@@ -1,0 +1,12 @@
+# Ignore everything by default.
+*
+
+# Keep directories traversable so nested TeX files can be tracked.
+!*/
+
+# Track LaTeX sources.
+!*.tex
+
+# Track repository metadata/docs.
+!.gitignore
+!README.md
