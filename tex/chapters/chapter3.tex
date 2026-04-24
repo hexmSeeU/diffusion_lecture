@@ -1,0 +1,326 @@
+\section{Flow Matching}
+
+上一章中，我们已经把 flow model 写成由神经网络参数化的 ODE：
+\begin{equation}
+X_0 \sim p_{init}, \qquad
+\frac{\dd X_t}{\dd t}=u_t^\theta(X_t).
+\end{equation}
+采样时，只要从简单分布 $p_{init}$ 取一个初始点，再沿着这个 ODE 模拟到 $t=1$，就得到输出 $X_1$。
+因此，训练问题可以表述为：如何学习向量场 $u_t^\theta$，使得 $X_1 \sim \data$。
+
+\subsection{条件概率路径与边缘概率路径}
+
+我们希望模型把初始分布 $p_{init}$ 连续地变成数据分布 $\data$。
+为了描述这个连续变化过程，引入\emph{概率路径}。
+
+\begin{definition}[条件概率路径]
+给定数据点 $\vz \in \R^d$，一族条件分布 $p_t(\cdot|\vz)$ 称为从 $p_{init}$ 到 $\delta_{\vz}$ 的条件概率路径，如果对所有 $\vz$ 都有
+\begin{equation}
+p_0(\cdot|\vz)=p_{init},
+\qquad
+p_1(\cdot|\vz)=\delta_{\vz}.
+\end{equation}
+其中 $\delta_{\vz}$ 表示集中在 $\vz$ 处的 Dirac 分布。
+\end{definition}
+
+直观上，$p_t(\cdot|\vz)$ 描述的是：如果最终目标是某个固定数据点 $\vz$，那么在中间时刻 $t$，样本应该分布在哪里。
+当 $t=0$ 时，它还是纯噪声；当 $t=1$ 时，它退化为确定的数据点 $\vz$。
+
+由条件概率路径可以推导出边缘概率路径。
+采样方式是先从数据分布中采样一个数据点，再从对应的条件路径中采样：
+\begin{equation}
+\vz \sim \data,
+\qquad
+\vx \sim p_t(\cdot|\vz)
+\quad \Longrightarrow \quad
+\vx \sim p_t.
+\end{equation}
+如果写成密度形式，则有
+\begin{equation}
+p_t(\vx)=\int p_t(\vx|\vz)\data(\vz)\,\dd \vz.
+\end{equation}
+
+由于条件路径端点满足 $ p_0(\cdot|\vz)=p_{\text{init}}, \quad p_1(\cdot|\vz)=\delta_{\vz}$，在 $t=0$ 时有：
+\begin{equation}
+  p_0(x)=\int p_{\text{init}}(x)p_{\text{data}}(\vz)\,d\vz = p_{\text{init}}
+\end{equation}
+在 $t=1$ 时有：
+\begin{equation}
+  p_1(x)=\int \delta(x-\vz)p_{\text{data}}(\vz)\,d\vz = p_{\text{data}}
+\end{equation}
+
+  
+\begin{equation}
+p_0=p_{init},
+\qquad
+p_1=\data.
+\end{equation}
+也就是说，$p_t$ 正是我们想让模型轨迹边缘分布遵循的噪声到数据的插值过程。
+
+\begin{example}[Gaussian 条件概率路径]
+最常用的一类条件概率路径是 Gaussian path。令 $\alpha_t,\beta_t$ 为两个连续可微的调度函数，满足
+\begin{equation}
+\alpha_0=0,\quad \alpha_1=1,
+\qquad
+\beta_0=1,\quad \beta_1=0.
+\end{equation}
+定义
+\begin{equation}
+p_t(\cdot|\vz)=\Normal(\alpha_t \vz,\beta_t^2 I_d).
+\end{equation}
+于是 $t=0$ 时有
+\begin{equation}
+p_0(\cdot|\vz)=\Normal(0,I_d)=p_{init},
+\end{equation}
+而 $t=1$ 时有
+\begin{equation}
+p_1(\cdot|\vz)=\Normal(\vz,0)=\delta_{\vz}.
+\end{equation}
+因此这是一个合法的条件概率路径。
+实际采样时可以写成
+\begin{equation}
+\epsilon \sim \Normal(0,I_d),
+\qquad
+\vx_t=\alpha_t \vz+\beta_t \epsilon.
+\end{equation}
+当 $t$ 较小时，$\vx_t$ 主要由噪声组成；当 $t$ 接近 $1$ 时，$\vx_t$ 逐渐接近数据点 $\vz$。
+\end{example}
+
+\subsection{条件向量场与边缘向量场}
+
+概率路径只说明了每个时刻的目标分布是什么，还没有说明应该用什么 ODE 到达这些分布。
+Flow Matching 接下来要构造一个目标向量场，使得 ODE 轨迹的边缘分布正好沿着 $p_t$ 演化。
+
+\begin{definition}[条件向量场]
+对固定数据点 $\vz$，若向量场 $u_t^{\mathrm{target}}(\vx|\vz)$ 对应的 ODE 满足
+\begin{equation}
+X_0 \sim p_{init},
+\qquad
+\frac{\dd X_t}{\dd t}
+=u_t^{\mathrm{target}}(X_t|\vz)
+\quad \Longrightarrow \quad
+X_t \sim p_t(\cdot|\vz),
+\end{equation}
+则称 $u_t^{\mathrm{target}}(\cdot|\vz)$ 是条件概率路径 $p_t(\cdot|\vz)$ 的条件向量场。
+\end{definition}
+
+条件向量场本身并不能直接生成新样本，因为它依赖某个已经给定的数据点 $\vz$。
+但它可以作为构造真实生成向量场的基本部件。
+
+\begin{theorem}[边缘化技巧]
+设 $u_t^{\mathrm{target}}(\vx|\vz)$ 是条件概率路径 $p_t(\cdot|\vz)$ 的条件向量场。
+定义边缘向量场
+\begin{equation}
+u_t^{\mathrm{target}}(\vx)
+=
+\int
+u_t^{\mathrm{target}}(\vx|\vz)
+\frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
+\,\dd \vz.
+\end{equation}
+则由该向量场定义的 ODE 满足
+\begin{equation}
+X_0 \sim p_{init},
+\qquad
+\frac{\dd X_t}{\dd t}
+=u_t^{\mathrm{target}}(X_t)
+\quad \Longrightarrow \quad
+X_t \sim p_t.
+\end{equation}
+特别地，$X_1 \sim \data$。
+\end{theorem}
+
+这个公式可以理解为一个后验加权平均。
+给定当前点 $\vx$，项
+\begin{equation}
+\frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
+\end{equation}
+描述了“当前 $\vx$ 可能来自哪个数据点 $\vz$”的后验权重，即 $p_t(\vz|\vx)$。
+边缘向量场就是把所有条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$ 按照这个权重平均起来。
+
+为了说明为什么这个构造是正确的，我们引入连续性方程。
+对一个随时间变化的密度 $p_t$ 和向量场 $u_t$，如果 ODE 轨迹的边缘分布为 $p_t$，那么密度满足
+\begin{equation}
+\partial_t p_t(\vx)
+=
+-\divergence(p_t u_t)(\vx).
+\end{equation}
+左边表示位置 $\vx$ 处概率密度随时间的变化，右边表示由向量场带来的概率质量净流入。
+边缘化技巧的证明本质上就是把条件路径的连续性方程对 $\vz$ 积分，再把积分项整理成边缘向量场。
+
+\begin{example}[Gaussian path 的条件向量场]
+考虑
+\begin{equation}
+p_t(\cdot|\vz)=\Normal(\alpha_t \vz,\beta_t^2 I_d).
+\end{equation}
+令 $\dot{\alpha}_t=\frac{\dd}{\dd t}\alpha_t$，$\dot{\beta}_t=\frac{\dd}{\dd t}\beta_t$。
+由采样表达式
+\begin{equation}
+\vx_t=\alpha_t \vz+\beta_t \epsilon
+\end{equation}
+可知
+\begin{equation}
+\frac{\dd \vx_t}{\dd t}
+=
+\dot{\alpha}_t\vz+\dot{\beta}_t\epsilon.
+\end{equation}
+又因为
+\begin{equation}
+\epsilon=\frac{\vx_t-\alpha_t\vz}{\beta_t},
+\end{equation}
+所以可得到条件向量场
+\begin{equation}
+u_t^{\mathrm{target}}(\vx|\vz)
+=
+\left(\dot{\alpha}_t-\frac{\dot{\beta}_t}{\beta_t}\alpha_t\right)\vz
++
+\frac{\dot{\beta}_t}{\beta_t}\vx.
+\end{equation}
+该向量场对应的 ODE 会使 $X_t$ 服从 $\Normal(\alpha_t \vz,\beta_t^2 I_d)$。
+\end{example}
+
+\subsection{学习边缘向量场}
+
+现在的问题变成：如何用神经网络 $u_t^\theta$ 学习边缘向量场 $u_t^{\mathrm{target}}$？
+最直接的想法是最小化均方误差
+\begin{equation}
+\mathcal{L}_{\mathrm{FM}}(\theta)
+=
+\E_{t\sim \mathrm{Unif}[0,1],\,\vx\sim p_t}
+\left[
+\left\|
+u_t^\theta(\vx)-u_t^{\mathrm{target}}(\vx)
+\right\|^2
+\right].
+\end{equation}
+这个损失称为 Flow Matching loss。
+如果能够最小化它，神经网络就会逼近真正的边缘向量场，从而在采样时把 $p_{init}$ 推到 $\data$。
+
+但实际中 $u_t^{\mathrm{target}}(\vx)$ 很难直接计算，因为它包含对整个数据分布的积分。
+相比之下，条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$ 往往有解析形式。
+因此定义 Conditional Flow Matching loss：
+\begin{equation}
+\mathcal{L}_{\mathrm{CFM}}(\theta)
+=
+\E_{t\sim \mathrm{Unif}[0,1],\,\vz\sim \data,\,\vx\sim p_t(\cdot|\vz)}
+\left[
+\left\|
+u_t^\theta(\vx)-u_t^{\mathrm{target}}(\vx|\vz)
+\right\|^2
+\right].
+\end{equation}
+
+\begin{theorem}[Conditional Flow Matching]
+Flow Matching loss 与 Conditional Flow Matching loss 只相差一个与参数 $\theta$ 无关的常数：
+\begin{equation}
+\mathcal{L}_{\mathrm{FM}}(\theta)
+=
+\mathcal{L}_{\mathrm{CFM}}(\theta)+C.
+\end{equation}
+因此二者关于 $\theta$ 的梯度相同：
+\begin{equation}
+\nabla_\theta \mathcal{L}_{\mathrm{FM}}(\theta)
+=
+\nabla_\theta \mathcal{L}_{\mathrm{CFM}}(\theta).
+\end{equation}
+也就是说，最小化可计算的 $\mathcal{L}_{\mathrm{CFM}}$，等价于最小化理想但不可直接计算的 $\mathcal{L}_{\mathrm{FM}}$。
+\end{theorem}
+
+这个结论是 Flow Matching 能够高效训练的关键。
+训练时不需要模拟 ODE，也不需要显式计算边缘向量场，只需要做一个普通的回归问题：给定带噪样本 $\vx$ 和时间 $t$，让网络输出接近对应的条件速度。
+
+对于 Gaussian path，Conditional Flow Matching loss 可以写得更具体。
+由
+\begin{equation}
+\vx=\alpha_t\vz+\beta_t\epsilon,
+\qquad
+\epsilon\sim \Normal(0,I_d),
+\end{equation}
+以及上一节的条件向量场公式，得到
+\begin{equation}
+\mathcal{L}_{\mathrm{CFM}}(\theta)
+=
+\E_{t,\vz,\epsilon}
+\left[
+\left\|
+u_t^\theta(\alpha_t\vz+\beta_t\epsilon)
+-
+(\dot{\alpha}_t\vz+\dot{\beta}_t\epsilon)
+\right\|^2
+\right].
+\end{equation}
+
+一个特别常用的选择是 CondOT path：
+\begin{equation}
+\alpha_t=t,
+\qquad
+\beta_t=1-t.
+\end{equation}
+此时
+\begin{equation}
+\dot{\alpha}_t=1,
+\qquad
+\dot{\beta}_t=-1,
+\end{equation}
+所以训练样本和目标速度分别为
+\begin{equation}
+\vx=t\vz+(1-t)\epsilon,
+\qquad
+u_t^{\mathrm{target}}(\vx|\vz)=\vz-\epsilon.
+\end{equation}
+对应的训练损失为
+\begin{equation}
+\mathcal{L}_{\mathrm{CFM}}(\theta)
+=
+\E_{t,\vz,\epsilon}
+\left[
+\left\|
+u_t^\theta(t\vz+(1-t)\epsilon)
+-
+(\vz-\epsilon)
+\right\|^2
+\right].
+\end{equation}
+这说明在 CondOT 设定下，Flow Matching 的训练目标非常简单：网络输入一个介于噪声和数据之间的点，输出从噪声指向数据的速度 $\vz-\epsilon$。
+
+\begin{algorithm}
+\caption{Flow Matching Training Procedure for Gaussian CondOT Path}
+\begin{algorithmic}[1]
+\Require Dataset samples $\vz \sim \data$, neural network vector field $u_t^\theta$
+\For{each mini-batch}
+    \State Sample data $\vz$ from the dataset
+    \State Sample time $t \sim \mathrm{Unif}[0,1]$
+    \State Sample noise $\epsilon \sim \Normal(0,I_d)$
+    \State Set $\vx = t\vz + (1-t)\epsilon$
+    \State Compute loss
+    \[
+    \mathcal{L}(\theta)
+    =
+    \left\|
+    u_t^\theta(\vx)-(\vz-\epsilon)
+    \right\|^2
+    \]
+    \State Update $\theta$ by a gradient step on $\mathcal{L}(\theta)$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+训练完成后，采样阶段只需要回到普通 flow model：
+\begin{equation}
+X_0 \sim p_{init},
+\qquad
+\frac{\dd X_t}{\dd t}=u_t^\theta(X_t),
+\end{equation}
+并从 $t=0$ 模拟到 $t=1$。
+如果训练充分好，则 $u_t^\theta$ 近似边缘目标向量场，最终样本 $X_1$ 就近似服从数据分布 $\data$。
+
+\begin{summarybox}
+Flow Matching 的流程可以概括为：
+\begin{enumerate}
+  \item 选择条件概率路径 $p_t(\cdot|\vz)$，使其从 $p_{init}$ 连接到 $\delta_{\vz}$；
+  \item 推导对应的条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$；
+  \item 利用边缘化技巧知道存在目标边缘向量场 $u_t^{\mathrm{target}}(\vx)$，它可以把 $p_{init}$ 推到 $\data$；
+  \item 不直接计算边缘向量场，而是最小化 conditional flow matching loss；
+  \item 训练完成后，用学习到的 $u_t^\theta$ 模拟 ODE 进行采样。
+\end{enumerate}
+\end{summarybox}
