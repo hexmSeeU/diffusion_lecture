@@ -131,6 +131,13 @@ X_t \sim p_t.
 \label{thm:marginal_skill}
 \end{theorem}
 
+这个公式可以理解为一个后验加权平均。
+给定当前点 $\vx$，项
+\begin{equation}
+\frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
+\end{equation}
+描述了“当前 $\vx$ 可能来自哪个数据点 $\vz$”的后验权重，即 $p_t(\vz|\vx)$。
+边缘向量场就是把所有条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$ 按照这个权重平均起来。
 为了说明为什么这个构造是正确的，我们引入连续性方程。
 \begin{theorem}[连续性方程]
 设 $u_t(\vx)$ 是一个足够光滑的时间依赖向量场，$X_0 \sim p_{init}$，且随机变量 $X_t$ 满足
@@ -206,41 +213,9 @@ X_1 \sim p_1=\data.
 \end{equation}
 \end{proof}
 
-这个公式可以理解为一个后验加权平均。
-给定当前点 $\vx$，项
-\begin{equation}
-\frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
-\end{equation}
-描述了“当前 $\vx$ 可能来自哪个数据点 $\vz$”的后验权重，即 $p_t(\vz|\vx)$。
-边缘向量场就是把所有条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$ 按照这个权重平均起来。
 
-为了说明为什么这个构造是正确的，我们引入连续性方程。
-\begin{theorem}[连续性方程]
-设 $u_t(\vx)$ 是一个足够光滑的时间依赖向量场，且随机变量 $X_t$ 满足
-\begin{equation}
-\frac{\dd X_t}{\dd t}=u_t(X_t).
-\end{equation}
-记 $X_t$ 的边缘密度为 $p_t(\vx)$，则 $p_t$ 满足
-\begin{equation}
-\begin{aligned}
-\partial_t p_t(\vx)
-&=
--\divergence\!\left(p_t(\vx)u_t(\vx)\right)
-& \qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{连续性方程}} \\
-&=
--\sum_{i=1}^d \partial_{x_i}\!\left(p_t(\vx)\,u_{t,i}(\vx)\right)
-& \qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{分量形式}}
-\end{aligned}
-\end{equation}
-\end{theorem}
 
-连续性方程描述的是概率质量如何在向量场的推动下在空间中流动。左边 $\partial_t p_t(\vx)$ 表示位置 $\vx$ 处概率密度随时间的变化率，右边则表示概率流 $p_t(\vx)u_t(\vx)$ 的净流出。这里
-\begin{equation}
-\divergence\,\vv
-=
-\sum_{i=1}^d \partial_{x_i} v_i
-\end{equation}
-是向量场 $\vv=(v_1,\dots,v_d)$ 的散度定义。
+
 
 \begin{example}[Gaussian path 的条件向量场]
 考虑
