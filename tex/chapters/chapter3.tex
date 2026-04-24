@@ -1,4 +1,4 @@
-\section{Flow Matching}
+﻿\section{Flow Matching}
 
 上一章中，我们已经把 flow model 写成由神经网络参数化的 ODE：
 \begin{equation}
@@ -128,7 +128,83 @@ X_0 \sim p_{init},
 X_t \sim p_t.
 \end{equation}
 特别地，$X_1 \sim \data$。
+\label{thm:marginal_skill}
 \end{theorem}
+
+为了说明为什么这个构造是正确的，我们引入连续性方程。
+\begin{theorem}[连续性方程]
+设 $u_t(\vx)$ 是一个足够光滑的时间依赖向量场，$X_0 \sim p_{init}$，且随机变量 $X_t$ 满足
+\begin{equation}
+\frac{\dd X_t}{\dd t}=u_t(X_t).
+\end{equation}
+则 $X_t \sim p_t(x)$ 当且仅当 $p_t$ 满足
+\begin{equation}
+\begin{aligned}
+\partial_t p_t(\vx)
+&=
+-\divergence\!\left(p_tu_t^{target}\right)\left(\vx\right)
+& \qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{连续性方程}} \\
+&=
+-\sum_{i=1}^d \frac{\partial}{\partial{x_i}}\!\left(p_tu_t^{target}\right)\left(\vx\right)
+& \qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{分量形式}}
+\end{aligned}
+\end{equation}
+
+\end{theorem}
+
+连续性方程描述的是概率质量如何在向量场的推动下在空间中流动。左边 $\partial_t p_t(\vx)$ 表示位置 $\vx$ 处概率密度随时间的变化率，右边则表示概率流 $p_t(\vx)u_t(\vx)$ 的净流出。这里
+\begin{equation}
+\divergence\!\left(v_t\right)\left(x\right)=\sum_{i=1}^d \frac{\partial}{\partial{x_i}}v_t^i(x)
+\end{equation}
+是 $v_t$ 的散度定义。下面我们用连续性方程证明~\ref{thm:marginal_skill}。
+
+\begin{proof}
+对每个固定的 $\vz$，条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$ 使得条件密度 $p_t(\cdot|\vz)$ 满足连续性方程，因此
+\begin{equation}
+\begin{aligned}
+\partial_t p_t(\vx)
+&=
+\int \partial_t p_t(\vx|\vz)\data(\vz)\,\dd \vz
+& \qquad\qquad \blacktriangleright \: \makebox[3.2cm][l]{\text{边缘密度定义}} \\
+&=
+-\int
+\divergence\!\left(
+p_t(\vx|\vz)\,u_t^{\mathrm{target}}(\vx|\vz)
+\right)\data(\vz)\,\dd \vz
+& \qquad\qquad \blacktriangleright \: \makebox[3.2cm][l]{\text{条件连续性方程}} \\
+&=
+-\divergence\!\left(
+\int
+p_t(\vx|\vz)\,u_t^{\mathrm{target}}(\vx|\vz)\data(\vz)\,\dd \vz
+\right)
+& \qquad\qquad \blacktriangleright \: \makebox[3.2cm][l]{\text{散度只对 $\vx$ 作用}} \\
+&=
+-\divergence\!\left(
+p_t(\vx)
+\int
+u_t^{\mathrm{target}}(\vx|\vz)
+\frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
+\,\dd \vz
+\right)
+& \qquad\qquad \blacktriangleright \: \makebox[3.2cm][l]{\text{数学变换}} \\
+&=
+-\divergence\!\left(
+p_t(\vx)\,u_t^{\mathrm{target}}(\vx)
+\right)
+& \qquad\qquad \blacktriangleright \: \makebox[3.2cm][l]{\text{边缘向量场定义}}
+\end{aligned}
+\end{equation}
+因此 $p_t$ 满足向量场 $u_t^{\mathrm{target}}(\vx)$ 所对应的连续性方程。再结合初值 $p_0=p_{init}$，可知由
+\begin{equation}
+X_0 \sim p_{init},
+\qquad
+\frac{\dd X_t}{\dd t}=u_t^{\mathrm{target}}(X_t)
+\end{equation}
+定义的轨迹在任意时刻都满足 $X_t \sim p_t$，特别地
+\begin{equation}
+X_1 \sim p_1=\data.
+\end{equation}
+\end{proof}
 
 这个公式可以理解为一个后验加权平均。
 给定当前点 $\vx$，项
@@ -139,14 +215,32 @@ X_t \sim p_t.
 边缘向量场就是把所有条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$ 按照这个权重平均起来。
 
 为了说明为什么这个构造是正确的，我们引入连续性方程。
-对一个随时间变化的密度 $p_t$ 和向量场 $u_t$，如果 ODE 轨迹的边缘分布为 $p_t$，那么密度满足
+\begin{theorem}[连续性方程]
+设 $u_t(\vx)$ 是一个足够光滑的时间依赖向量场，且随机变量 $X_t$ 满足
 \begin{equation}
-\partial_t p_t(\vx)
-=
--\divergence(p_t u_t)(\vx).
+\frac{\dd X_t}{\dd t}=u_t(X_t).
 \end{equation}
-左边表示位置 $\vx$ 处概率密度随时间的变化，右边表示由向量场带来的概率质量净流入。
-边缘化技巧的证明本质上就是把条件路径的连续性方程对 $\vz$ 积分，再把积分项整理成边缘向量场。
+记 $X_t$ 的边缘密度为 $p_t(\vx)$，则 $p_t$ 满足
+\begin{equation}
+\begin{aligned}
+\partial_t p_t(\vx)
+&=
+-\divergence\!\left(p_t(\vx)u_t(\vx)\right)
+& \qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{连续性方程}} \\
+&=
+-\sum_{i=1}^d \partial_{x_i}\!\left(p_t(\vx)\,u_{t,i}(\vx)\right)
+& \qquad\qquad\qquad\qquad \blacktriangleright \: \makebox[3cm][l]{\text{分量形式}}
+\end{aligned}
+\end{equation}
+\end{theorem}
+
+连续性方程描述的是概率质量如何在向量场的推动下在空间中流动。左边 $\partial_t p_t(\vx)$ 表示位置 $\vx$ 处概率密度随时间的变化率，右边则表示概率流 $p_t(\vx)u_t(\vx)$ 的净流出。这里
+\begin{equation}
+\divergence\,\vv
+=
+\sum_{i=1}^d \partial_{x_i} v_i
+\end{equation}
+是向量场 $\vv=(v_1,\dots,v_d)$ 的散度定义。
 
 \begin{example}[Gaussian path 的条件向量场]
 考虑
