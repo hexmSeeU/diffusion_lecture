@@ -79,9 +79,9 @@ p_1(\cdot|\vz)=\Normal(\vz,0)=\delta_{\vz}.
 因此这是一个合法的条件概率路径。
 实际采样时可以写成
 \begin{equation}
-\epsilon \sim \Normal(0,I_d),
+\varepsilon \sim \Normal(0,I_d),
 \qquad
-\vx_t=\alpha_t \vz+\beta_t \epsilon.
+\vx_t=\alpha_t \vz+\beta_t \varepsilon.
 \end{equation}
 当 $t$ 较小时，$\vx_t$ 主要由噪声组成；当 $t$ 接近 $1$ 时，$\vx_t$ 逐渐接近数据点 $\vz$。
 \end{example}
@@ -217,35 +217,81 @@ X_1 \sim p_1=\data.
 
 
 
-\begin{example}[Gaussian path 的条件向量场]
+\begin{example}[Gaussian probability path 的目标 ODE]
 考虑
 \begin{equation}
 p_t(\cdot|\vz)=\Normal(\alpha_t \vz,\beta_t^2 I_d).
 \end{equation}
-令 $\dot{\alpha}_t=\frac{\dd}{\dd t}\alpha_t$，$\dot{\beta}_t=\frac{\dd}{\dd t}\beta_t$。
-由采样表达式
+其中 $\alpha_t,\beta_t$ 是给定的噪声调度函数，满足
 \begin{equation}
-\vx_t=\alpha_t \vz+\beta_t \epsilon
+\alpha_0=\beta_1=0,\qquad \alpha_1=\beta_0=1.
 \end{equation}
-可知
+记 $\dot{\alpha}_t=\frac{\dd}{\dd t}\alpha_t$，$\dot{\beta}_t=\frac{\dd}{\dd t}\beta_t$。
+
+我们先定义条件 flow
 \begin{equation}
-\frac{\dd \vx_t}{\dd t}
-=
-\dot{\alpha}_t\vz+\dot{\beta}_t\epsilon.
+\psi_t^{\mathrm{target}}(\vx|\vz)=\alpha_t \vz+\beta_t \vx.
 \end{equation}
-又因为
+若 $X_0\sim p_{init}=\Normal(0,I_d)$，则
 \begin{equation}
-\epsilon=\frac{\vx_t-\alpha_t\vz}{\beta_t},
+X_t=\psi_t^{\mathrm{target}}(X_0|\vz)=\alpha_t \vz+\beta_t X_0
+\sim
+\Normal(\alpha_t \vz,\beta_t^2 I_d),
 \end{equation}
-所以可得到条件向量场
+\noindent
+因此该 flow 诱导出了条件概率路径 $p_t(\cdot|\vz)$。再由
 \begin{equation}
-u_t^{\mathrm{target}}(\vx|\vz)
-=
-\left(\dot{\alpha}_t-\frac{\dot{\beta}_t}{\beta_t}\alpha_t\right)\vz
+\begin{aligned}
+\frac{\dd}{\dd t}\psi_t^{\mathrm{target}}(x|z)
+&=
+u_t^{\mathrm{target}}
+\bigl(
+\psi_t^{\mathrm{target}}(\vx|\vz)| \vz
+\bigr)
+\qquad
+\text{for all } \vx,\vz \in \mathbb{R}^d \\
+\dot{\alpha}_t \vz + \dot{\beta}_t \vx
+&=
+u_t^{\mathrm{target}}
+\bigl(
+\alpha_t \vz + \beta_t \vx | \vz
+\bigr)
+\qquad
+\text{for all } \vx,\vz \in \mathbb{R}^d \\
+\dot{\alpha}_t \vz
 +
-\frac{\dot{\beta}_t}{\beta_t}\vx.
+\dot{\beta}_t
+\left(
+\frac{\vx - \alpha_t \vz}{\beta_t}
+\right)
+&=
+u_t^{\mathrm{target}}(\vx | \vz)
+\qquad
+\text{for all } \vx,\vz \in \mathbb{R}^d \\
+\left(
+\dot{\alpha}_t
+-
+\frac{\dot{\beta}_t}{\beta_t}\alpha_t
+\right) \vz
++
+\frac{\dot{\beta}_t}{\beta_t}\vx
+&=
+u_t^{\mathrm{target}}(\vx | \vz)
+\qquad
+\text{for all } \vx,\vz \in \mathbb{R}^d
+\end{aligned}
 \end{equation}
-该向量场对应的 ODE 会使 $X_t$ 服从 $\Normal(\alpha_t \vz,\beta_t^2 I_d)$。
+
+因此，若考虑 ODE
+\begin{equation}
+X_0\sim \Normal(0,I_d),
+\qquad
+\frac{\dd X_t}{\dd t}=u_t^{\mathrm{target}}(X_t|\vz),
+\end{equation}
+则它的解满足
+\begin{equation}
+X_t\sim \Normal(\alpha_t \vz,\beta_t^2 I_d).
+\end{equation}
 \end{example}
 
 \subsection{学习边缘向量场}
@@ -281,76 +327,227 @@ u_t^\theta(\vx)-u_t^{\mathrm{target}}(\vx|\vz)
 
 \begin{theorem}[Conditional Flow Matching]
 Flow Matching loss 与 Conditional Flow Matching loss 只相差一个与参数 $\theta$ 无关的常数：
-\begin{equation}
+\begin{equation*}
 \mathcal{L}_{\mathrm{FM}}(\theta)
 =
 \mathcal{L}_{\mathrm{CFM}}(\theta)+C.
-\end{equation}
+\end{equation*}
 因此二者关于 $\theta$ 的梯度相同：
-\begin{equation}
+\begin{equation*}
 \nabla_\theta \mathcal{L}_{\mathrm{FM}}(\theta)
 =
 \nabla_\theta \mathcal{L}_{\mathrm{CFM}}(\theta).
-\end{equation}
+\end{equation*}
 也就是说，最小化可计算的 $\mathcal{L}_{\mathrm{CFM}}$，等价于最小化理想但不可直接计算的 $\mathcal{L}_{\mathrm{FM}}$。
 \end{theorem}
 
-这个结论是 Flow Matching 能够高效训练的关键。
-训练时不需要模拟 ODE，也不需要显式计算边缘向量场，只需要做一个普通的回归问题：给定带噪样本 $\vx$ 和时间 $t$，让网络输出接近对应的条件速度。
+\begin{proof}
+从 Flow Matching loss 出发，
+\begin{equation*}
+\begin{aligned}
+\mathcal{L}_{\mathrm{FM}}(\theta)
+&\overset{(i)}{=}
+\mathbb{E}_{t \sim \mathrm{Unif},\, \vx \sim p_t}
+\left[
+\left\|
+u_t^\theta(\vx)
+-
+u_t^{\mathrm{target}}(\vx)
+\right\|^2
+\right] \\
+&\overset{(ii)}{=}
+\mathbb{E}_{t \sim \mathrm{Unif},\, \vx \sim p_t}
+\left[
+\left\|
+u_t^\theta(\vx)
+\right\|^2
+-
+2\,u_t^\theta(\vx)^{T}
+u_t^{\mathrm{target}}(\vx)
++
+\left\|
+u_t^{\mathrm{target}}(\vx)
+\right\|^2
+\right] \\
+&\overset{(iii)}{=}
+\mathbb{E}_{t \sim \mathrm{Unif},\, \vx \sim p_t}
+\left[
+\left\|
+u_t^\theta(\vx)
+\right\|^2
+\right]
+-
+2\,
+\mathbb{E}_{t \sim \mathrm{Unif},\, \vx \sim p_t}
+\left[
+u_t^\theta(\vx)^{T}
+u_t^{\mathrm{target}}(\vx)
+\right]
++
+\underbrace{
+\mathbb{E}_{t \sim \mathrm{Unif}_{[0,1]},\, \vx \sim p_t}
+\left[
+\left\|
+u_t^{\mathrm{target}}(\vx)
+\right\|^2
+\right]
+}_{=:C_1} \\
+&\overset{(iv)}{=}
+\mathbb{E}_{t \sim \mathrm{Unif},\, \vz \sim p_{\mathrm{data}},\, \vx \sim p_t(\cdot \mid \vz)}
+\left[
+\left\|
+u_t^\theta(\vx)
+\right\|^2
+\right]
+-
+2\,
+\mathbb{E}_{t \sim \mathrm{Unif},\, \vx \sim p_t}
+\left[
+u_t^\theta(\vx)^{T}
+u_t^{\mathrm{target}}(\vx)
+\right]
++
+C_1
+\end{aligned}
+\end{equation*}
+其中在 $(iii)$ 由于第三项和模型参数 $\theta$ 无关，我们用常数 $C_1$ 来表示；在 $(iv)$ 由于 $p_t$ 是由条件概率路径边缘化得到的，我们可以把期望中的 $\vx \sim p_t$ 替换成先采样 $\vz \sim \data$ 再采样 $\vx \sim p_t(\cdot|\vz)$。对于第二项
+\begin{equation*}
+\begin{aligned}
+\mathbb{E}_{t \sim \mathrm{Unif},\, x \sim p_t}
+\left[
+u_t^\theta(x)^T
+u_t^{\mathrm{target}}(x)
+\right]
+&\overset{(i)}{=}
+\int_0^1
+\int
+p_t(x)\,
+u_t^\theta(x)^T
+u_t^{\mathrm{target}}(x)
+\,dx\,dt \\
+&\overset{(ii)}{=}
+\int_0^1
+\int
+p_t(x)\,
+u_t^\theta(x)^T
+\left[
+\int
+u_t^{\mathrm{target}}(x \mid z)
+\frac{
+p_t(x \mid z)\,
+p_{\mathrm{data}}(z)
+}{
+p_t(x)
+}
+\,dz
+\right]
+dx\,dt \\
+&\overset{(iii)}{=}
+\int_0^1
+\int
+\int
+u_t^\theta(x)^T
+u_t^{\mathrm{target}}(x \mid z)\,
+p_t(x \mid z)\,
+p_{\mathrm{data}}(z)
+\,dz\,dx\,dt \\
+&\overset{(iv)}{=}
+\mathbb{E}_{t \sim \mathrm{Unif},\, z \sim p_{\mathrm{data}},\, x \sim p_t(\cdot \mid z)}
+\left[
+u_t^\theta(x)^T
+u_t^{\mathrm{target}}(x \mid z)
+\right] 
+\end{aligned}
+\end{equation*}
+其中 $(iv)$ 将积分形式表达成期望形式。
+因此
+\begin{equation*}
+\begin{aligned}
+\mathcal{L}_{\mathrm{FM}}(\theta) & \overset{(i)}{=} \mathbb{E}_{t \sim \text{Unif}, z \sim p_{\text{data}}, x \sim p_t(\cdot | z)}\left[\|u_t^\theta(x)\|^2\right] - 2\mathbb{E}_{t \sim \text{Unif}, z \sim p_{\text{data}}, x \sim p_t(\cdot | z)}\left[u_t^\theta(x)^T u_t^{\text{target}}(x | z)\right] + C_1 \\
+& \overset{(ii)}{=} \mathbb{E}_{t \sim \text{Unif}, z \sim p_{\text{data}}, x \sim p_t(\cdot | z)}\left[\|u_t^\theta(x)\|^2 - 2u_t^\theta(x)^T u_t^{\text{target}}(x | z) + \|u_t^{\text{target}}(x | z)\|^2 - \|u_t^{\text{target}}(x | z)\|^2\right] + C_1 \\
+& \overset{(iii)}{=} \mathbb{E}_{t \sim \text{Unif}, z \sim p_{\text{data}}, x \sim p_t(\cdot | z)}\left[\|u_t^\theta(x) - u_t^{\text{target}}(x | z)\|^2\right] + \underbrace{\mathbb{E}_{t \sim \text{Unif}, z \sim p_{\text{data}}, x \sim p_t(\cdot | z)}\left[-\|u_t^{\text{target}}(x | z)\|^2\right]}_{C_2} + C_1 \\
+& \overset{(iv)}{=} \mathcal{L}_{\mathrm{CFM}}(\theta) + \underbrace{C_2 + C_1}_{=: C}
+\end{aligned}
+\end{equation*}
+因此
+\[
+\nabla_\theta \mathcal{L}_{\mathrm{FM}}(\theta)
+=
+\nabla_\theta \mathcal{L}_{\mathrm{CFM}}(\theta).
+\]
+\end{proof}
 
-对于 Gaussian path，Conditional Flow Matching loss 可以写得更具体。
-由
+这个结论是 Flow Matching 能够高效训练的关键。
+训练时不需要模拟 ODE，也不需要显式计算边缘向量场，只需要做一个普通的回归问题：给定带噪样本 $\vx$ 和时间 $t$，让网络输出接近对应的条件速度 $u_t^{\text{target}}(x | z)$。
+
+\begin{example}[Gaussian 条件概率路径下的 Conditional Flow Matching]
+对于 Gaussian path，
 \begin{equation}
-\vx=\alpha_t\vz+\beta_t\epsilon,
+\vx=\alpha_t\vz+\beta_t\varepsilon,
 \qquad
-\epsilon\sim \Normal(0,I_d),
+\varepsilon\sim \Normal(0,I_d),
 \end{equation}
-以及上一节的条件向量场公式，得到
+并结合上一节得到的条件向量场
+\begin{equation}
+u_t^{\mathrm{target}}(\vx|\vz)=
+\frac{\dot{\beta}_t}{\beta_t}\vx
++
+\left(\dot{\alpha}_t-\frac{\dot{\beta}_t}{\beta_t}\alpha_t\right)\vz,
+\end{equation}
+可将其进一步化简为
+\begin{equation}
+u_t^{\mathrm{target}}(\alpha_t\vz+\beta_t\varepsilon \mid \vz)
+=
+\dot{\alpha}_t\vz+\dot{\beta}_t\varepsilon.
+\end{equation}
+因此 Conditional Flow Matching loss 变为
 \begin{equation}
 \mathcal{L}_{\mathrm{CFM}}(\theta)
 =
-\E_{t,\vz,\epsilon}
+\E_{t,\vz,\varepsilon}
 \left[
 \left\|
-u_t^\theta(\alpha_t\vz+\beta_t\epsilon)
+u_t^\theta(\alpha_t\vz+\beta_t\varepsilon)
 -
-(\dot{\alpha}_t\vz+\dot{\beta}_t\epsilon)
+(\dot{\alpha}_t\vz+\dot{\beta}_t\varepsilon)
 \right\|^2
 \right].
 \end{equation}
 
-一个特别常用的选择是 CondOT path：
+一个特别常用的选择是 CondOT path，
 \begin{equation}
 \alpha_t=t,
 \qquad
 \beta_t=1-t.
 \end{equation}
-此时
+此时有
 \begin{equation}
 \dot{\alpha}_t=1,
 \qquad
 \dot{\beta}_t=-1,
 \end{equation}
-所以训练样本和目标速度分别为
+因此训练样本和目标速度分别为
 \begin{equation}
-\vx=t\vz+(1-t)\epsilon,
+\vx=t\vz+(1-t)\varepsilon,
 \qquad
-u_t^{\mathrm{target}}(\vx|\vz)=\vz-\epsilon.
+u_t^{\mathrm{target}}(\vx|\vz)=\vz-\varepsilon.
 \end{equation}
-对应的训练损失为
+对应的训练损失写成
 \begin{equation}
 \mathcal{L}_{\mathrm{CFM}}(\theta)
 =
-\E_{t,\vz,\epsilon}
+\E_{t,\vz,\varepsilon}
 \left[
 \left\|
-u_t^\theta(t\vz+(1-t)\epsilon)
+u_t^\theta(t\vz+(1-t)\varepsilon)
 -
-(\vz-\epsilon)
+(\vz-\varepsilon)
 \right\|^2
 \right].
 \end{equation}
-这说明在 CondOT 设定下，Flow Matching 的训练目标非常简单：网络输入一个介于噪声和数据之间的点，输出从噪声指向数据的速度 $\vz-\epsilon$。
+\end{example}
+
+这说明在 CondOT 设定下，Flow Matching 的训练目标非常简单：网络输入一个介于噪声和数据之间的点，输出从噪声指向数据的速度 $\vz-\varepsilon$。
 
 \begin{algorithm}
 \caption{Flow Matching Training Procedure for Gaussian CondOT Path}
@@ -359,14 +556,14 @@ u_t^\theta(t\vz+(1-t)\epsilon)
 \For{each mini-batch}
     \State Sample data $\vz$ from the dataset
     \State Sample time $t \sim \mathrm{Unif}[0,1]$
-    \State Sample noise $\epsilon \sim \Normal(0,I_d)$
-    \State Set $\vx = t\vz + (1-t)\epsilon$
+    \State Sample noise $\varepsilon \sim \Normal(0,I_d)$
+    \State Set $\vx = t\vz + (1-t)\varepsilon$
     \State Compute loss
     \[
     \mathcal{L}(\theta)
     =
     \left\|
-    u_t^\theta(\vx)-(\vz-\epsilon)
+    u_t^\theta(\vx)-(\vz-\varepsilon)
     \right\|^2
     \]
     \State Update $\theta$ by a gradient step on $\mathcal{L}(\theta)$
@@ -384,12 +581,43 @@ X_0 \sim p_{init},
 如果训练充分好，则 $u_t^\theta$ 近似边缘目标向量场，最终样本 $X_1$ 就近似服从数据分布 $\data$。
 
 \begin{summarybox}
-Flow Matching 的流程可以概括为：
-\begin{enumerate}
-  \item 选择条件概率路径 $p_t(\cdot|\vz)$，使其从 $p_{init}$ 连接到 $\delta_{\vz}$；
-  \item 推导对应的条件向量场 $u_t^{\mathrm{target}}(\vx|\vz)$；
-  \item 利用边缘化技巧知道存在目标边缘向量场 $u_t^{\mathrm{target}}(\vx)$，它可以把 $p_{init}$ 推到 $\data$；
-  \item 不直接计算边缘向量场，而是最小化 conditional flow matching loss；
-  \item 训练完成后，用学习到的 $u_t^\theta$ 模拟 ODE 进行采样。
-\end{enumerate}
+Flow Matching 训练的核心在于学习边缘向量场 $u_t^{\text{target}}$。为了构建它，我们选择一条满足 $p_0(\cdot|z) = p_{\text{init}}$ 且 $p_1(\cdot|z) = \delta_z$ 的条件概率路径 $p_t(x|z)$。接下来，我们寻找一个条件向量场 $u_t^{\text{target}}(x|z)$，使其对应的流 $\psi_t^{\text{target}}(x|z)$ 满足：
+
+\begin{equation}
+X_0 \sim p_{\text{init}} \Rightarrow X_t = \psi_t^{\text{target}}(X_0|z) \sim p_t(\cdot|z)
+\end{equation}
+
+或者等价地，使 $u_t^{\text{target}}$ 满足连续性方程。那么，由下式定义的边缘向量场：
+
+\begin{equation}
+u_t^{\text{target}}(x) = \int u_t^{\text{target}}(x|z) \frac{p_t(x|z)p_{\text{data}}(z)}{p_t(x)} dz
+\end{equation}
+
+将遵循边缘概率路径，即：
+
+\begin{equation}
+X_0 \sim p_{\text{init}}, dX_t = u_t^{\text{target}}(X_t)dt \Rightarrow X_t \sim p_t \quad (0 \leq t \leq 1)
+\end{equation}
+
+特别地，对于该常微分方程（ODE），$X_1 \sim p_{\text{data}}$，从而实现 $u_t^{\text{target}}$ 将“噪声转化为数据”的预期目标。为了学习该向量场，我们最小化条件流匹配损失：
+
+\begin{equation}
+\mathcal{L}_{\text{CFM}}(\theta) = \mathbb{E}_{t \sim \text{Unif}, z \sim p_{\text{data}}, x \sim p_t(\cdot|z)}[\|u_t^\theta(x) - u_t^{\text{target}}(x|z)\|^2]
+\end{equation}
+
+最广泛使用的示例是高斯概率路径。在这种情况下，公式变为：
+
+\begin{equation}
+p_t(x|z) = \mathcal{N}(x; \alpha_t z, \beta_t^2 I_d)
+\end{equation}
+
+\begin{equation}
+u_t^{\text{flow}}(x|z) = \left( \dot{\alpha}_t - \frac{\dot{\beta}_t \alpha_t}{\beta_t} \right) z + \frac{\dot{\beta}_t}{\beta_t} x
+\end{equation}
+
+\begin{equation}
+\mathcal{L}_{\text{CFM}}(\theta) = \mathbb{E}_{t \sim \text{Unif}, z \sim p_{\text{data}}, \varepsilon \sim \mathcal{N}(0, I_d)}[\|u_t^\theta(\alpha_t z + \beta_t \varepsilon) - (\dot{\alpha}_t z + \dot{\beta}_t \varepsilon)\|^2]
+\end{equation}
+
+其中噪声调度器 $\alpha_t, \beta_t \in \mathbb{R}$ 是连续可微且单调的函数，我们选择它们满足 $\alpha_0 = \beta_1 = 0$ 且 $\alpha_1 = \beta_0 = 1$（例如，$\alpha_t = t, \beta_t = 1 - t$）。
 \end{summarybox}
