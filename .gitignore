@@ -7,6 +7,9 @@
 # Track LaTeX sources.
 !*.tex
 
+# Track selected lecture figures.
+!tex/figures/selected/*.png
+
 # Track repository metadata/docs.
 !.gitignore
 !README.md

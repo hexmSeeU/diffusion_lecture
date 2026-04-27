@@ -86,6 +86,24 @@ x_t=\alpha_t z+\beta_t \varepsilon.
 当 $t$ 较小时，$x_t$ 主要由噪声组成；当 $t$ 接近 $1$ 时，$x_t$ 逐渐接近数据点 $z$。
 \end{example}
 
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\linewidth]{tex/figures/selected/figure04-gaussian-path-images.png}
+  \caption{Gaussian 条件概率路径在图像数据上的直观效果：从纯噪声逐渐插值到数据样本。}
+  \label{fig:gaussian-path-images}
+\end{figure}
+
+图~\ref{fig:gaussian-path-images} 展示了 Gaussian path 的核心直觉：较小的 $t$ 对应更多噪声，较大的 $t$ 对应更接近真实数据的样本。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{tex/figures/selected/figure05-paths.png}
+  \caption{条件概率路径与边缘概率路径。上排固定数据点 $z$，下排对数据分布 $\data$ 做边缘化。}
+  \label{fig:conditional-marginal-paths}
+\end{figure}
+
+图~\ref{fig:conditional-marginal-paths} 对比了条件路径和边缘路径：条件路径以单个数据点为终点，而边缘路径以整个数据分布为终点。
+
 \subsection{条件向量场与边缘向量场}
 
 概率路径只说明了每个时刻的目标分布是什么，还没有说明应该用什么 ODE 到达这些分布。
@@ -138,6 +156,16 @@ X_t \sim p_t.
 \end{equation}
 描述了“当前 $x$ 可能来自哪个数据点 $z$”的后验权重，即 $p_t(z|x)$。
 边缘向量场就是把所有条件向量场 $u_t^{\mathrm{target}}(x|z)$ 按照这个权重平均起来。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{tex/figures/selected/figure06-ode-paths.png}
+  \caption{用 ODE 模拟条件概率路径和边缘概率路径。上排对应固定数据点的条件路径，下排对应边缘路径。}
+  \label{fig:ode-path-simulation}
+\end{figure}
+
+图~\ref{fig:ode-path-simulation} 展示了边缘化技巧的作用：虽然条件向量场只会把样本推向固定数据点，但对条件向量场做后验加权平均后，可以得到真正生成数据分布的边缘向量场。
+
 为了说明为什么这个构造是正确的，我们引入连续性方程。
 \begin{theorem}[连续性方程]
 设 $u_t(x)$ 是一个足够光滑的时间依赖向量场，$X_0 \sim p_{\mathrm{init}}$，且随机变量 $X_t$ 满足
@@ -549,6 +577,15 @@ u_t^\theta(t z+(1-t)\varepsilon)
 \end{example}
 
 这说明在 CondOT 设定下，Flow Matching 的训练目标非常简单：网络输入一个介于噪声和数据之间的点，输出从噪声指向数据的速度 $z-\varepsilon$。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{tex/figures/selected/figure07-flow-matching.png}
+  \caption{Flow Matching 训练后的 ODE 采样效果。上排是真实边缘概率路径，下排是训练后的 flow model 产生的样本分布。}
+  \label{fig:flow-matching-simulation}
+\end{figure}
+
+如图~\ref{fig:flow-matching-simulation} 所示，训练充分时，flow matching 模型模拟出的分布会沿着预设概率路径逐步从噪声移动到数据。
 
 \begin{algorithm}
 \caption{Flow Matching Training Procedure for Gaussian CondOT Path}

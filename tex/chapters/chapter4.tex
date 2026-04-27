@@ -12,6 +12,15 @@ score 描述的是密度在当前位置增长最快的方向。由于
 \)，
 它可以理解为“相对密度变化率”。
 
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\linewidth]{tex/figures/selected/figure08-score.png}
+  \caption{Score function 指向 log-likelihood 增长最快的方向。左侧是概率密度，右侧箭头表示对应的 score field。}
+  \label{fig:score-function}
+\end{figure}
+
+图~\ref{fig:score-function} 给出了 score 的几何直觉：低密度区域的点会沿着 score 指向更高密度区域。
+
 在 Flow Matching 中，我们先指定条件概率路径 $p_t(\cdot|z)$，再通过边缘化得到边缘概率路径
 \begin{equation*}
 p_t(x)=\int p_t(x|z)\data(z)\,\dd z.
@@ -263,6 +272,15 @@ $u_t^{\mathrm{target}}$ 和边缘 score $\nabla_x \log p_t$，就可以在不改
 $\sigma_t=0$ 时，它退化回原来的 flow model；当 $\sigma_t>0$ 时，轨迹会变成
 随机的，但每个时刻的样本分布仍然是同一个 $p_t$。
 
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{tex/figures/selected/figure09-sde-paths.png}
+  \caption{用 SDE 模拟同一条概率路径。随机噪声使单条轨迹变得曲折，但边缘分布仍沿着指定的 $p_t$ 演化。}
+  \label{fig:sde-path-simulation}
+\end{figure}
+
+图~\ref{fig:sde-path-simulation} 对比了 SDE 采样与 ODE 采样的效果：SDE 轨迹具有随机性，但整体样本分布仍保持在目标概率路径上。
+
 \begin{example}[Gaussian 概率路径下的 SDE 采样]
 对于 Gaussian 概率路径，由命题 \ref{prop:convertion} 可知
 \begin{equation}
@@ -302,6 +320,15 @@ $\nabla_x\log p_t(x)$，训练后即可模拟
 需要强调的是，理论上任意 $\sigma_t\ge 0$ 都保持同一条边缘概率路径；
 但在实际模型中，神经网络存在近似误差，数值求解 SDE 也存在离散化误差。
 因此不同的 $\sigma_t$ 会影响采样质量和计算成本，通常需要通过实验选择。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\linewidth]{tex/figures/selected/figure10-langevin.png}
+  \caption{Langevin dynamics 的直观效果：粒子在 score 引导和随机噪声共同作用下逐渐接近目标分布。}
+  \label{fig:langevin-dynamics}
+\end{figure}
+
+图~\ref{fig:langevin-dynamics} 展示了 score 与随机噪声共同塑造采样分布的典型例子；这也是 diffusion model 中 SDE 采样直觉的重要来源。
 
 \subsection{学习 score：Score Matching}
 
