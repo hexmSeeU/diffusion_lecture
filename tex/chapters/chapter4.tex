@@ -1,0 +1,357 @@
+\section{Score Matching}
+
+上一章中，我们通过 Flow Matching 学习了一个向量场 $u_t^\theta$，使得对应 ODE 能够把简单分布 $p_{init}$ 推到数据分布 $\data$。这一章介绍另一条经典路线：不直接学习速度场，而是学习每个时刻的 \emph{score function}，再利用 score 来构造生成过程。
+
+\subsection{条件 score 与边缘 score}
+设 $p(x)$ 是 $\R^d$ 上的一个概率分布，则其 score function 定义为 $s_p(\vx)=\nabla_\vx \log p(\vx)$。
+
+
+score 描述的是密度在当前位置增长最快的方向。由于
+\(
+\nabla_\vx \log p(\vx)=\frac{\nabla_\vx p(\vx)}{p(\vx)}
+\)，
+它可以理解为“相对密度变化率”。
+
+在 Flow Matching 中，我们先指定条件概率路径 $p_t(\cdot|\vz)$，再通过边缘化得到边缘概率路径
+\begin{equation*}
+p_t(\vx)=\int p_t(\vx|\vz)\data(\vz)\,\dd \vz.
+\end{equation*}
+对于 score，边缘score可以通过条件score function 表示为
+\begin{equation}
+  \nabla_\vx \log p_t(\vx)
+  =
+  \int
+  \nabla_\vx \log p_t(\vx|\vz)
+  \frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
+  \,\dd \vz.
+  \end{equation}
+
+\begin{proof}
+由边缘密度的定义，
+\begin{equation*}
+p_t(\vx)=\int p_t(\vx|\vz)\data(\vz)\,\dd \vz.
+\end{equation*}
+对 $\vx$ 求梯度得
+\begin{equation*}
+\nabla_\vx p_t(\vx)
+=
+\int \nabla_\vx p_t(\vx|\vz)\data(\vz)\,\dd \vz.
+\end{equation*}
+两边同时除以 $p_t(\vx)$，并利用
+\(
+\nabla_\vx p_t(\vx|\vz)
+=
+p_t(\vx|\vz)\nabla_\vx \log p_t(\vx|\vz)
+\)
+即可得到
+\begin{equation*}
+\nabla_\vx \log p_t(\vx)
+=
+\int
+\nabla_\vx \log p_t(\vx|\vz)
+\frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
+\,\dd \vz.
+\end{equation*}
+\end{proof}
+
+
+\begin{example}[Gaussian 条件概率路径的条件 score]
+考虑 Gaussian 条件概率路径
+\begin{equation}
+p_t(\cdot|\vz)=\Normal(\alpha_t \vz,\beta_t^2 I_d).
+\end{equation}
+其对数密度为
+\begin{equation}
+\log p_t(\vx|\vz)
+=
+-\frac{d}{2}\log(2\pi \beta_t^2)
+-\frac{1}{2\beta_t^2}\|\vx-\alpha_t \vz\|^2.
+\end{equation}
+因此条件 score function为
+\begin{equation}
+\nabla_\vx \log p_t(\vx|\vz)
+=
+-\frac{\vx-\alpha_t \vz}{\beta_t^2}
+\end{equation}
+\end{example}
+注意到 Gaussian 条件概率路径的条件 score function 是一个线性函数，且与 $\vz$ 的关系完全由均值 $\alpha_t \vz$ 决定，同时 条件向量场 $u_t(x|z)$ 也具有该性质。因此二者之间存在转换关系
+
+\begin{proposition}[Gaussian 概率路径下向量场与 score 的转换公式]
+\label{prop:convertion}
+  对于 Gaussian 条件概率路径
+\begin{equation}
+p_t(\cdot|\vz)=\Normal(\alpha_t \vz,\beta_t^2 I_d),
+\end{equation}
+条件（或边缘）向量场与条件（或边缘） score 满足
+\begin{equation}
+  \begin{aligned}
+    u_t^{\text{target}}(x|z) &= a_t \nabla \log p_t(x|z) + b_t x, \quad a_t = \left( \beta_t^2 \frac{\dot{\alpha}_t}{\alpha_t} - \dot{\beta}_t \beta_t \right), \quad b_t = \frac{\dot{\alpha}_t}{\alpha_t} \\
+    u_t^{\text{target}}(x) &= a_t \nabla \log p_t(x) + b_t x. 
+  \end{aligned}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+从条件向量场和条件score，我们可以得到：
+\begin{equation}
+\begin{aligned}
+u_t^{\text{target}}(x|z) &= \left( \dot{\alpha}_t - \frac{\dot{\beta}_t}{\beta_t} \alpha_t \right) z + \frac{\dot{\beta}_t}{\beta_t} x \\
+&\stackrel{(i)}{=} \left( \beta_t^2 \frac{\dot{\alpha}_t}{\alpha_t} - \dot{\beta}_t \beta_t \right) \left( \frac{\alpha_t z - x}{\beta_t^2} \right) + \frac{\dot{\alpha}_t}{\alpha_t} x \\
+&= \left( \beta_t^2 \frac{\dot{\alpha}_t}{\alpha_t} - \dot{\beta}_t \beta_t \right) \nabla \log p_t(x|z) + \frac{\dot{\alpha}_t}{\alpha_t} x
+\end{aligned}
+\end{equation}
+在 $(i)$ 中我们做了一些数学代换。通过积分，我们可以得到边缘向量场和边缘score之间的关系
+\begin{equation}
+\begin{aligned}
+u_t^{\text{target}}(x) &= \int u_t^{\text{target}}(x|z) \frac{p_t(x|z)p_{\text{data}}(z)}{p_t(x)} dz \\
+&= \int [a_t \nabla \log p_t(x|z) + b_t x] \frac{p_t(x|z)p_{\text{data}}(z)}{p_t(x)} dz \\
+&= a_t \int \left( \frac{\nabla p_t(x|z)}{p_t(x|z)} \right) \frac{p_t(x|z)p_{\text{data}}(z)}{p_t(x)} dz + b_t x \int \frac{p_t(x, z)}{p_t(x)} dz \\
+&= \frac{a_t}{p_t(x)} \int \nabla p_t(x|z) p_{\text{data}}(z) dz + b_t x \int p_t(z|x) dz \\
+&\stackrel{(i)}{=} \frac{a_t}{p_t(x)} \nabla \int p_t(x|z) p_{\text{data}}(z) dz + b_t x \cdot 1 \\
+&= a_t \frac{\nabla p_t(x)}{p_t(x)} + b_t x \\
+&= a_t \nabla \log p_t(x) + b_t x
+\end{aligned}
+\end{equation}
+其中，$(i)$ 首先利用莱布尼茨法则将 $\nabla$ 提到积分号外面；其次利用了条件分布积分归一化 $\int p_t(z|x) dz = 1$。
+\end{proof}
+
+\begin{remark}[score 的重参数化]
+在 Gaussian probability path 下，速度场参数化与 score 参数化本质上是等价的线性重参数化。换句话说，只要能够恢复后验均值 $\E[\vz|\vx]$，就可以在向量场、score 和 denoiser 三种表述之间互相转换。
+
+定义条件denoiser和边缘denoiser
+\begin{equation}
+D_t(x|z) = z, \quad D_t(x) = \int z \frac{p_t(x|z) p_{\text{data}}(z)}{p_t(x)} dz \stackrel{(i)}{=} \frac{1}{\dot{\alpha}_t \beta_t - \alpha_t \dot{\beta}_t} (\beta_t u_t^{\text{target}}(x_t) - \dot{\beta}_t x_t).
+\end{equation}
+其中，$(i)$ 由~\ref{prop:convertion}推导得出。
+学习 denoiser 的模型被称为 denoising diffusion model，与学习向量场和 score 等价。
+\end{remark}
+
+\subsection{如何利用 score 进行采样}
+
+学到 score 之后，下一步是利用它进行生成。与 Flow Matching 中“直接模拟一个 ODE”不同，score-based model 更自然的形式是从一个带噪 SDE 出发，再利用 score 构造反向过程。
+
+先考虑一个前向 SDE：
+\begin{equation}
+\dd X_t=f_t(X_t)\,\dd t+g_t\,\dd W_t,
+\qquad X_0\sim \data.
+\end{equation}
+这里 $f_t$ 是 drift，$g_t$ 是 diffusion coefficient，$W_t$ 是标准 Brownian motion。这个 SDE 把数据分布逐步扰动成更简单的分布；例如在很多扩散模型中，终点 $X_1$ 接近一个高斯分布。
+
+与之对应，密度 $p_t$ 满足 Fokker--Planck 方程
+\begin{equation}
+\partial_t p_t(\vx)
+=
+-\divergence\!\left(f_t(\vx)p_t(\vx)\right)
++\frac{g_t^2}{2}\Delta p_t(\vx),
+\end{equation}
+其中
+\(
+\Delta p_t(\vx)=\sum_{i=1}^d \frac{\partial^2}{\partial x_i^2}p_t(\vx)
+\)
+是 Laplacian。
+
+关键结论是：只要知道每个时刻的边缘 score $s_t(\vx)=\nabla_\vx \log p_t(\vx)$，就可以构造一个反向 SDE，把简单终点分布重新推回数据分布。
+
+\begin{theorem}[SDE extension trick]
+设前向过程满足
+\begin{equation}
+\dd X_t=f_t(X_t)\,\dd t+g_t\,\dd W_t,
+\qquad X_0\sim \data,
+\end{equation}
+且边缘密度为 $p_t$。定义反向时间过程
+\begin{equation}
+\dd Y_t=
+\left(
+-f_{1-t}(Y_t)+g_{1-t}^2 s_{1-t}(Y_t)
+\right)\dd t
++
+g_{1-t}\,\dd W_t,
+\qquad
+Y_0\sim p_1.
+\end{equation}
+则 $Y_t\sim p_{1-t}$。特别地，$Y_1\sim p_0=\data$。
+\end{theorem}
+
+\begin{proof}
+我们只说明核心计算。设 $q_t$ 是过程 $Y_t$ 的密度。由 Fokker--Planck 方程，
+\begin{equation}
+\partial_t q_t(\vx)
+=
+-\divergence\!\left(
+\left[-f_{1-t}(\vx)+g_{1-t}^2 s_{1-t}(\vx)\right]q_t(\vx)
+\right)
++\frac{g_{1-t}^2}{2}\Delta q_t(\vx).
+\end{equation}
+若取 $q_t(\vx)=p_{1-t}(\vx)$，则
+\begin{equation}
+\partial_t q_t(\vx)=-\partial_t p_{1-t}(\vx).
+\end{equation}
+再将前向过程的 Fokker--Planck 方程在时间 $1-t$ 处代入，并利用
+\begin{equation}
+s_{1-t}(\vx)=\nabla_\vx \log p_{1-t}(\vx)
+=
+\frac{\nabla_\vx p_{1-t}(\vx)}{p_{1-t}(\vx)},
+\end{equation}
+即可验证上式右边恰好等于
+\begin{equation}
+-\divergence\!\left(
+\left[-f_{1-t}(\vx)+g_{1-t}^2 s_{1-t}(\vx)\right]p_{1-t}(\vx)
+\right)
++\frac{g_{1-t}^2}{2}\Delta p_{1-t}(\vx).
+\end{equation}
+因此 $q_t=p_{1-t}$ 满足该反向 SDE 的 Fokker--Planck 方程，再结合初值 $q_0=p_1$，得到 $q_t=p_{1-t}$。
+\end{proof}
+
+这个定理给出了一种清晰的生成方案：
+\begin{enumerate}
+  \item 先设计一个前向加噪过程，把数据逐步变成简单分布；
+  \item 再学习每个时刻的 score $s_t(\vx)$；
+  \item 最后利用上面的反向 SDE，从简单分布出发采样回数据分布。
+\end{enumerate}
+
+\subsection{学习 score：Score Matching}
+
+现在的问题变成：如何学习真实 score $s_t(\vx)$？
+
+最直接的目标是最小化
+\begin{equation}
+\mathcal{L}_{\mathrm{SM}}(\theta)
+=
+\E_{t\sim \mathrm{Unif}[0,1],\,\vx\sim p_t}
+\left[
+\left\|
+s_t^\theta(\vx)-s_t(\vx)
+\right\|^2
+\right],
+\end{equation}
+其中 $s_t^\theta$ 是神经网络给出的 score 估计。
+
+但和 Flow Matching 一样，边缘 score $s_t(\vx)$ 通常无法直接计算。于是我们转而考虑条件 score，并定义 Denoising Score Matching loss：
+\begin{equation}
+\mathcal{L}_{\mathrm{DSM}}(\theta)
+=
+\E_{t\sim \mathrm{Unif}[0,1],\,\vz\sim \data,\,\vx\sim p_t(\cdot|\vz)}
+\left[
+\left\|
+s_t^\theta(\vx)-s_t^{\mathrm{cond}}(\vx|\vz)
+\right\|^2
+\right].
+\end{equation}
+
+\begin{theorem}[Denoising Score Matching]
+Score Matching loss 与 Denoising Score Matching loss 只相差一个与参数 $\theta$ 无关的常数：
+\begin{equation}
+\mathcal{L}_{\mathrm{SM}}(\theta)
+=
+\mathcal{L}_{\mathrm{DSM}}(\theta)+C.
+\end{equation}
+因此
+\begin{equation}
+\nabla_\theta \mathcal{L}_{\mathrm{SM}}(\theta)
+=
+\nabla_\theta \mathcal{L}_{\mathrm{DSM}}(\theta).
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+证明与上一章的 Conditional Flow Matching 完全平行。由
+\begin{equation}
+\mathcal{L}_{\mathrm{SM}}(\theta)
+=
+\E_{t,\vx\sim p_t}
+\left[
+\left\|
+s_t^\theta(\vx)-s_t(\vx)
+\right\|^2
+\right]
+\end{equation}
+出发，展开平方项得
+\begin{equation}
+\begin{aligned}
+\mathcal{L}_{\mathrm{SM}}(\theta)
+&=
+\E_{t,\vx\sim p_t}\!\left[\|s_t^\theta(\vx)\|^2\right]
+-2\E_{t,\vx\sim p_t}\!\left[s_t^\theta(\vx)^\top s_t(\vx)\right]
++C_1.
+\end{aligned}
+\end{equation}
+再利用边缘化技巧
+\begin{equation}
+s_t(\vx)
+=
+\int
+s_t^{\mathrm{cond}}(\vx|\vz)
+\frac{p_t(\vx|\vz)\data(\vz)}{p_t(\vx)}
+\,\dd \vz,
+\end{equation}
+可将中间项改写为
+\begin{equation}
+\E_{t,\vx\sim p_t}\!\left[s_t^\theta(\vx)^\top s_t(\vx)\right]
+=
+\E_{t,\vz,\vx\sim p_t(\cdot|\vz)}
+\left[
+s_t^\theta(\vx)^\top s_t^{\mathrm{cond}}(\vx|\vz)
+\right].
+\end{equation}
+于是
+\begin{equation}
+\mathcal{L}_{\mathrm{SM}}(\theta)
+=
+\E_{t,\vz,\vx\sim p_t(\cdot|\vz)}
+\left[
+\|s_t^\theta(\vx)\|^2
+-2s_t^\theta(\vx)^\top s_t^{\mathrm{cond}}(\vx|\vz)
+\right]
++C_1.
+\end{equation}
+再在期望中加上并减去
+\(
+\|s_t^{\mathrm{cond}}(\vx|\vz)\|^2
+\)，
+就得到
+\begin{equation}
+\mathcal{L}_{\mathrm{SM}}(\theta)
+=
+\mathcal{L}_{\mathrm{DSM}}(\theta)+C,
+\end{equation}
+其中常数项 $C$ 与参数 $\theta$ 无关。
+\end{proof}
+
+\begin{example}[Gaussian path 下的 Denoising Score Matching]
+对于 Gaussian 条件概率路径，
+\begin{equation}
+\vx=\alpha_t\vz+\beta_t\epsilon,
+\qquad
+\epsilon\sim \Normal(0,I_d),
+\end{equation}
+且条件 score 满足
+\begin{equation}
+s_t^{\mathrm{cond}}(\vx|\vz)
+=
+-\frac{\epsilon}{\beta_t}.
+\end{equation}
+因此 DSM loss 可写成
+\begin{equation}
+\mathcal{L}_{\mathrm{DSM}}(\theta)
+=
+\E_{t,\vz,\epsilon}
+\left[
+\left\|
+s_t^\theta(\alpha_t\vz+\beta_t\epsilon)
++\frac{\epsilon}{\beta_t}
+\right\|^2
+\right].
+\end{equation}
+\end{example}
+
+这正是现代扩散模型中最常见的训练目标之一。网络输入一个带噪样本和时间 $t$，输出对应时刻的 score；训练完成后，再用上一节的反向 SDE 从噪声逐步采样回数据。
+
+\begin{summarybox}
+Score-based generative modeling 的核心逻辑与 Flow Matching 非常相似：先指定一条从数据分布到简单分布的随机扰动路径，再学习与这条路径对应的目标函数。不同之处在于，这里学习的对象是 score
+\(
+s_t(\vx)=\nabla_\vx \log p_t(\vx)
+\)，
+而不是速度场。
+
+对于条件概率路径 $p_t(\cdot|\vz)$，我们往往可以显式写出条件 score $s_t^{\mathrm{cond}}(\vx|\vz)$；再通过边缘化技巧把它与边缘 score 联系起来。学到 score 之后，可以利用反向 SDE 将简单终点分布重新推回数据分布。训练时虽然真实边缘 score 不可直接计算，但 Denoising Score Matching 定理说明：最小化可计算的条件损失 $\mathcal{L}_{\mathrm{DSM}}$，等价于最小化理想的边缘损失 $\mathcal{L}_{\mathrm{SM}}$。对于 Gaussian path，这个目标进一步退化成对噪声的简单回归问题。
+\end{summarybox}
