@@ -128,86 +128,180 @@ D_t(x|z) = z, \quad D_t(x) = \int z \frac{p_t(x|z) p_{\text{data}}(z)}{p_t(x)} d
 
 \subsection{如何利用 score 进行采样}
 
-学到 score 之后，下一步是利用它进行生成。与 Flow Matching 中“直接模拟一个 ODE”不同，score-based model 更自然的形式是从一个带噪 SDE 出发，再利用 score 构造反向过程。
+上一节说明了：对于 Gaussian 概率路径，边缘向量场
+$u_t^{\mathrm{target}}(\vx)$ 和边缘 score
+$\nabla_\vx \log p_t(\vx)$ 可以相互转换。现在我们讨论如何用 score
+把一个确定性的 flow model 扩展成带随机性的 diffusion model。
 
-先考虑一个前向 SDE：
+先回忆上一章的结论：如果边缘向量场 $u_t^{\mathrm{target}}$ 满足
 \begin{equation}
-\dd X_t=f_t(X_t)\,\dd t+g_t\,\dd W_t,
-\qquad X_0\sim \data.
+  X_0\sim p_{\mathrm{init}},
+  \qquad
+  \dd X_t=u_t^{\mathrm{target}}(X_t)\,\dd t,
 \end{equation}
-这里 $f_t$ 是 drift，$g_t$ 是 diffusion coefficient，$W_t$ 是标准 Brownian motion。这个 SDE 把数据分布逐步扰动成更简单的分布；例如在很多扩散模型中，终点 $X_1$ 接近一个高斯分布。
+那么 $X_t\sim p_t$，特别地 $X_1\sim \data$。也就是说，这个 ODE
+沿着我们指定的概率路径 $p_t$ 把噪声分布推到数据分布。接下来要问的是：
+能不能在这个动力系统中加入随机噪声，同时仍然保证每个时刻的边缘分布还是
+$p_t$？
 
-与之对应，密度 $p_t$ 满足 Fokker--Planck 方程
+答案是可以的。关键工具是 Fokker--Planck 方程，它是连续性方程在 SDE
+情形下的推广。我们首先通过下式定义 \emph{拉普拉斯（Laplacian）算子} $\Delta$：
 \begin{equation}
-\partial_t p_t(\vx)
+\Delta w_t(\vx)
 =
--\divergence\!\left(f_t(\vx)p_t(\vx)\right)
-+\frac{g_t^2}{2}\Delta p_t(\vx),
+\sum_{i=1}^d \frac{\partial^2}{\partial x_i^2} w_t(\vx)
+=
+\divergence(\nabla_\vx w_t)(\vx),
 \end{equation}
-其中
-\(
-\Delta p_t(\vx)=\sum_{i=1}^d \frac{\partial^2}{\partial x_i^2}p_t(\vx)
-\)
-是 Laplacian。
+其中 $w_t:\R^d\to\R$ 是标量场。
 
-关键结论是：只要知道每个时刻的边缘 score $s_t(\vx)=\nabla_\vx \log p_t(\vx)$，就可以构造一个反向 SDE，把简单终点分布重新推回数据分布。
+\begin{theorem}[Fokker--Planck 方程]
+考虑 SDE
+\begin{equation}
+  X_0\sim p_{\mathrm{init}},
+  \qquad
+  \dd X_t=u_t(X_t)\,\dd t+\sigma_t\,\dd W_t,
+\end{equation}
+其中 $\sigma_t\ge 0$ 是只依赖时间的 diffusion coefficient。如果
+$X_t$ 的密度为 $p_t$，则 $p_t$ 满足
+\begin{equation}
+  \partial_t p_t(\vx)
+  =
+  -\divergence\!\left(p_t u_t\right)(\vx)
+  +\frac{\sigma_t^2}{2}\Delta p_t(\vx).
+\end{equation}
+反过来，若一条概率路径 $p_t$ 满足上式和初值条件，则它就是该 SDE
+的边缘密度路径。
+\end{theorem}
+
+当 $\sigma_t=0$ 时，Laplacian 项消失，Fokker--Planck 方程就退化为
+flow model 中的连续性方程
+\begin{equation}
+  \partial_t p_t(\vx)
+  =
+  -\divergence\!\left(p_t u_t\right)(\vx).
+\end{equation}
+因此，SDE 和 ODE 的区别正体现在额外的扩散项
+$\frac{\sigma_t^2}{2}\Delta p_t$ 上。为了让加入噪声后的过程仍然沿着同一条
+概率路径 $p_t$ 运动，我们需要在 drift 中加入一个由 score 给出的修正项。
 
 \begin{theorem}[SDE extension trick]
-设前向过程满足
+\label{thm:SDE_extension}
+设 $u_t^{\mathrm{target}}$ 是对应概率路径 $p_t$ 的边缘向量场，即
 \begin{equation}
-\dd X_t=f_t(X_t)\,\dd t+g_t\,\dd W_t,
-\qquad X_0\sim \data,
+  X_0\sim p_{\mathrm{init}},
+  \qquad
+  \dd X_t=u_t^{\mathrm{target}}(X_t)\,\dd t
+  \quad\Longrightarrow\quad
+  X_t\sim p_t.
 \end{equation}
-且边缘密度为 $p_t$。定义反向时间过程
+则对任意 diffusion coefficient $\sigma_t\ge 0$，SDE
 \begin{equation}
-\dd Y_t=
-\left(
--f_{1-t}(Y_t)+g_{1-t}^2 s_{1-t}(Y_t)
-\right)\dd t
-+
-g_{1-t}\,\dd W_t,
-\qquad
-Y_0\sim p_1.
+  X_0\sim p_{\mathrm{init}},
+  \qquad
+  \dd X_t=
+  \left[
+    u_t^{\mathrm{target}}(X_t)
+    +\frac{\sigma_t^2}{2}\nabla_\vx \log p_t(X_t)
+  \right]\dd t
+  +\sigma_t\,\dd W_t
 \end{equation}
-则 $Y_t\sim p_{1-t}$。特别地，$Y_1\sim p_0=\data$。
+仍然满足
+\begin{equation}
+  X_t\sim p_t,\qquad 0\le t\le 1.
+\end{equation}
+特别地，$X_1\sim \data$。
 \end{theorem}
 
 \begin{proof}
-我们只说明核心计算。设 $q_t$ 是过程 $Y_t$ 的密度。由 Fokker--Planck 方程，
+因为 $u_t^{\mathrm{target}}$ 对应的 ODE 沿着概率路径 $p_t$ 运动，
+所以 $p_t$ 满足连续性方程
 \begin{equation}
-\partial_t q_t(\vx)
-=
--\divergence\!\left(
-\left[-f_{1-t}(\vx)+g_{1-t}^2 s_{1-t}(\vx)\right]q_t(\vx)
-\right)
-+\frac{g_{1-t}^2}{2}\Delta q_t(\vx).
+  \partial_t p_t(\vx)
+  =
+  -\divergence\!\left(p_t u_t^{\mathrm{target}}\right)(\vx).
 \end{equation}
-若取 $q_t(\vx)=p_{1-t}(\vx)$，则
+在右侧同时加上并减去同一个 Laplacian 项：
 \begin{equation}
-\partial_t q_t(\vx)=-\partial_t p_{1-t}(\vx).
+\begin{aligned}
+  \partial_t p_t(\vx)
+  &=
+  -\divergence\!\left(p_t u_t^{\mathrm{target}}\right)(\vx)
+  -\frac{\sigma_t^2}{2}\Delta p_t(\vx)
+  +\frac{\sigma_t^2}{2}\Delta p_t(\vx)  \\
+  &=
+  -\divergence\!\left(p_t u_t^{\mathrm{target}}\right)(\vx)
+  -\divergence\!\left(
+      p_t \frac{\sigma_t^2}{2}\nabla_\vx \log p_t
+    \right)(\vx)
+  +\frac{\sigma_t^2}{2}\Delta p_t(\vx)  \\
+  &=
+  -\divergence\!\left(
+      p_t\left[
+        u_t^{\mathrm{target}}
+        +\frac{\sigma_t^2}{2}\nabla_\vx \log p_t
+      \right]
+    \right)(\vx)
+  +\frac{\sigma_t^2}{2}\Delta p_t(\vx).
+\end{aligned}
 \end{equation}
-再将前向过程的 Fokker--Planck 方程在时间 $1-t$ 处代入，并利用
-\begin{equation}
-s_{1-t}(\vx)=\nabla_\vx \log p_{1-t}(\vx)
-=
-\frac{\nabla_\vx p_{1-t}(\vx)}{p_{1-t}(\vx)},
-\end{equation}
-即可验证上式右边恰好等于
-\begin{equation}
--\divergence\!\left(
-\left[-f_{1-t}(\vx)+g_{1-t}^2 s_{1-t}(\vx)\right]p_{1-t}(\vx)
-\right)
-+\frac{g_{1-t}^2}{2}\Delta p_{1-t}(\vx).
-\end{equation}
-因此 $q_t=p_{1-t}$ 满足该反向 SDE 的 Fokker--Planck 方程，再结合初值 $q_0=p_1$，得到 $q_t=p_{1-t}$。
+这里用到了
+\(
+  p_t\nabla_\vx \log p_t=\nabla_\vx p_t
+\)
+以及
+\(
+  \Delta p_t=\divergence(\nabla_\vx p_t)
+\)。
+最后一行正是上面 SDE 的 Fokker--Planck 方程。因此该 SDE 的边缘密度仍为
+$p_t$。
 \end{proof}
 
-这个定理给出了一种清晰的生成方案：
-\begin{enumerate}
-  \item 先设计一个前向加噪过程，把数据逐步变成简单分布；
-  \item 再学习每个时刻的 score $s_t(\vx)$；
-  \item 最后利用上面的反向 SDE，从简单分布出发采样回数据分布。
-\end{enumerate}
+这个结论的含义很直接：一旦我们知道边缘向量场
+$u_t^{\mathrm{target}}$ 和边缘 score $\nabla_\vx \log p_t$，就可以在不改变
+目标概率路径的情况下，任意选择 $\sigma_t$ 来加入随机性。当
+$\sigma_t=0$ 时，它退化回原来的 flow model；当 $\sigma_t>0$ 时，轨迹会变成
+随机的，但每个时刻的样本分布仍然是同一个 $p_t$。
+
+\begin{example}[Gaussian 概率路径下的 SDE 采样]
+对于 Gaussian 概率路径，由命题 \ref{prop:convertion} 可知
+\begin{equation}
+  u_t^{\mathrm{target}}(\vx)
+  =
+  a_t\nabla_\vx\log p_t(\vx)+b_t\vx.
+\end{equation}
+因此 SDE extension trick 可以写成只依赖 score 的形式：
+\begin{equation}
+  \dd X_t
+  =
+  \left[
+    \left(a_t+\frac{\sigma_t^2}{2}\right)
+    \nabla_\vx\log p_t(X_t)
+    +b_t X_t
+  \right]\dd t
+  +\sigma_t\,\dd W_t.
+\end{equation}
+如果我们用神经网络 $s_t^\theta(\vx)$ 近似
+$\nabla_\vx\log p_t(\vx)$，训练后即可模拟
+\begin{equation}
+  \dd X_t
+  =
+  \left[
+    \left(a_t+\frac{\sigma_t^2}{2}\right)
+    s_t^\theta(X_t)
+    +b_t X_t
+  \right]\dd t
+  +\sigma_t\,\dd W_t,
+  \qquad
+  X_0\sim p_{\mathrm{init}},
+\end{equation}
+并把终点 $X_1$ 作为生成样本。
+\end{example}
+
+
+需要强调的是，理论上任意 $\sigma_t\ge 0$ 都保持同一条边缘概率路径；
+但在实际模型中，神经网络存在近似误差，数值求解 SDE 也存在离散化误差。
+因此不同的 $\sigma_t$ 会影响采样质量和计算成本，通常需要通过实验选择。
 
 \subsection{学习 score：Score Matching}
 
